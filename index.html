@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Lampung Truck Race - Pecel Lele Gerobak Edition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght=900&family=Poppins:wght=700&display=swap" rel="stylesheet">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background-color: #00a8ff; font-family: 'Poppins', sans-serif; transition: background-color 0.5s; }
+
+        canvas { display: block; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+
+        .game-ui-panel {
+            position: fixed;
+            top: 20px; left: 20px;
+            z-index: 10;
+            background: rgba(10, 15, 25, 0.85);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-radius: 14px;
+            padding: 15px 20px;
+            color: #ffffff;
+            pointer-events: auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 190px;
+        }
+        .panel-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 18px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #ffcc00;
+        }
+        .mode-status {
+            font-size: 11px;
+            color: #57ecf8;
+            font-weight: bold;
+            text-transform: uppercase;
+            background: rgba(255,255,255,0.1);
+            padding: 3px 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .coin-display {
+            font-size: 16px;
+            color: #f1c40f;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .lives-container {
+            font-size: 16px;
+            color: #ff4757;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        .btn-restart {
+            background: #e74c3c; color: white; border: none;
+            padding: 8px 15px; border-radius: 6px; font-weight: bold;
+            cursor: pointer; font-family: 'Poppins', sans-serif;
+            transition: background 0.2s; text-align: center;
+            margin-top: 5px;
+        }
+        .btn-restart:hover { background: #c0392b; }
+
+        .screen-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(10, 15, 25, 0.9); z-index: 1000;
+            display: none; flex-direction: column; justify-content: center; align-items: center; color: white;
+        }
+        .screen-overlay h2 { font-family: 'Orbitron', sans-serif; font-size: 4rem; margin-bottom: 25px; letter-spacing: 3px; text-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .screen-overlay button { background: #2ecc71; border: none; padding: 14px 40px; color: white; font-size: 18px; font-weight: bold; border-radius: 30px; cursor: pointer; font-family: 'Orbitron', sans-serif; box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4); }
+        .screen-overlay button:hover { background: #27ae60; }
+        
+        .game-over-text { color: #ff4757 !important; }
+        .win-text { color: #2ecc71 !important; }
+    </style>
+</head>
+<body>
+
+    <div class="game-ui-panel">
+        <div class="panel-title">🚚 Lampung Truck</div>
+        <div class="mode-status" id="mode-status">☀️ MODE: SIANG (Klik Sun)</div>
+        <div class="coin-display" id="coin-display">🪙 Koin: 0</div>
+        <div class="lives-container" id="lives-display">❤️ ❤️ ❤️</div>
+        <button class="btn-restart" id="btn-reset">🔄 Restart</button>
+    </div>
+
+    <div id="game-result-screen" class="screen-overlay">
+        <h2 id="status-title">GAME OVER</h2>
+        <button id="btn-replay">MAIN LAGI</button>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.165.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // SUARA KLAKSON TRUK BESAR (TRUCK PNEUMATIC AIR HORN)
+        function playHornSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const now = audioCtx.currentTime;
+            
+            // Menggunakan kombinasi dua osilator frekuensi rendah untuk efek klakson angin menggema
+            const osc1 = audioCtx.createOscillator();
+            const osc2 = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc1.type = 'sawtooth';
+            osc1.frequency.setValueAtTime(160, now); // Frekuensi nge-bass khas truk
+            
+            osc2.type = 'sawtooth';
+            osc2.frequency.setValueAtTime(164, now); // Detuning sedikit agar bergetar hebat
+            
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.3, now + 0.05);
+            gainNode.gain.setValueAtTime(0.3, now + 0.5); // Klakson panjang 0.6 detik
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+            
+            osc1.connect(gainNode);
+            osc2.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + 0.65);
+            osc2.stop(now + 0.65);
+        }
+
+        function playCoinSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); osc.frequency.setValueAtTime(880.00, audioCtx.currentTime + 0.07); 
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+        }
+
+        function playGameOverSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const arcadeMelody = [392.00, 349.23, 311.13, 293.66, 261.63, 196.00, 146.83]; const noteDurations = [0.12, 0.12, 0.12, 0.12, 0.2, 0.2, 0.5];
+            let timeOffset = 0;
+            arcadeMelody.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + timeOffset); gain.gain.setValueAtTime(0.15, audioCtx.currentTime + timeOffset);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + timeOffset + noteDurations[index]);
+                osc.connect(gain); gain.connect(audioCtx.destination); osc.start(audioCtx.currentTime + timeOffset); osc.stop(audioCtx.currentTime + timeOffset + noteDurations[index]);
+                timeOffset += noteDurations[index] * 0.85;
+            });
+        }
+
+        function playHitSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const bufferSize = audioCtx.sampleRate * 0.45; const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
+            const noise = audioCtx.createBufferSource(); noise.buffer = buffer;
+            const noiseFilter = audioCtx.createBiquadFilter(); noiseFilter.type = 'bandpass'; noiseFilter.frequency.setValueAtTime(280, audioCtx.currentTime); noiseFilter.frequency.linearRampToValueAtTime(80, audioCtx.currentTime + 0.35); noiseFilter.Q.setValueAtTime(4.0, audioCtx.currentTime);
+            const noiseGain = audioCtx.createGain(); noiseGain.gain.setValueAtTime(0.9, audioCtx.currentTime); noiseGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.42);
+            noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(audioCtx.destination); noise.start();
+        }
+
+        function playWinSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const notes = [523.25, 659.25, 783.99, 1046.50]; 
+            notes.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + index * 0.1); gain.gain.setValueAtTime(0.15, audioCtx.currentTime + index * 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + index * 0.1 + 0.35);
+                osc.connect(gain); gain.connect(audioCtx.destination); osc.start(audioCtx.currentTime + index * 0.1); osc.stop(audioCtx.currentTime + index * 0.1 + 0.35);
+            });
+        }
+
+        // SCENE & CONFIG UTAMA
+        const scene = new THREE.Scene();
+        // SUARA MESIN TRUK
+const truckSound = new Audio(
+    "truck.mp3"
+);
+
+truckSound.loop = true;
+truckSound.volume = 0.4;
+
+        const dayColor = new THREE.Color(0x00a8ff);
+        const nightColor = new THREE.Color(0x0a0f1d);
+        scene.background = dayColor.clone(); 
+        scene.fog = new THREE.FogExp2(0x00a8ff, 0.0012);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85); scene.add(ambientLight);
+        
+        // POSISI MATAHARI TIMUR KE BARAT
+        const sunGroup = new THREE.Group();
+        sunGroup.position.set(-150, 90, -500); 
+        const sunVisual = new THREE.Mesh(new THREE.SphereGeometry(14, 24, 24), new THREE.MeshBasicMaterial({ color: 0xfff200 }));
+        sunGroup.add(sunVisual);
+        scene.add(sunGroup);
+        sunVisual.name = "klikMatahari";
+
+        const sunLight = new THREE.DirectionalLight(0xfffaed, 1.4); sunLight.position.set(0, 100, 0); sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+        sunGroup.add(sunLight);
+
+        const trackLength = 1000;
+        const trackWidth = 16;
+
+        // GROUND DAN JALAN RAYA
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(350, trackLength), new THREE.MeshStandardMaterial({ color: 0x6ab04c, roughness: 0.9 }));
+        ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.02, -trackLength / 2); ground.receiveShadow = true;
+        scene.add(ground);
+
+        const road = new THREE.Mesh(new THREE.PlaneGeometry(trackWidth, trackLength), new THREE.MeshStandardMaterial({ color: 0x3d3d3d, roughness: 0.85 }));
+        road.rotation.x = -Math.PI / 2; road.position.set(0, 0, -trackLength / 2); road.receiveShadow = true;
+        scene.add(road);
+
+        const sidewalkL = new THREE.Mesh(new THREE.PlaneGeometry(60, trackLength), new THREE.MeshStandardMaterial({ color: 0xd2dae2, roughness: 0.7 }));
+        sidewalkL.rotation.x = -Math.PI / 2; sidewalkL.position.set(-(trackWidth/2 + 30), 0.02, -trackLength / 2); sidewalkL.receiveShadow = true;
+        const sidewalkR = sidewalkL.clone(); sidewalkR.position.x = (trackWidth/2 + 30);
+        scene.add(sidewalkL, sidewalkR);
+
+        const roadLinesGroup = new THREE.Group();
+        const lineGeo = new THREE.PlaneGeometry(0.35, 4.5); const lineMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0 });
+        for (let z = 0; z > -trackLength; z -= 9) {
+            const lineStrip = new THREE.Mesh(lineGeo, lineMat); lineStrip.rotation.x = -Math.PI / 2; lineStrip.position.set(0, 0.03, z - 2); roadLinesGroup.add(lineStrip);
+        }
+        scene.add(roadLinesGroup);
+
+        const environmentGroup = new THREE.Group(); scene.add(environmentGroup);
+
+        // GUNUNG JAUH
+        const mountainGeo = new THREE.ConeGeometry(140, 65, 4);
+        const mountainMat = new THREE.MeshStandardMaterial({ color: 0x1B1464, roughness: 0.99, flatShading: true });
+        const mt1 = new THREE.Mesh(mountainGeo, mountainMat); mt1.position.set(-200, 15, -950); environmentGroup.add(mt1);
+        const mt2 = new THREE.Mesh(mountainGeo, mountainMat); mt2.position.set(200, 10, -980); environmentGroup.add(mt2);
+
+        // Array Penampung Semua Lampu & Emissive Malam Hari
+        const nightLightsArray = [];
+        const nightEmissiveMaterials = [];
+
+        // KANVAS SPANDUK PECEL LELE KHAS INDONESIA
+        function createPecelLeleBannerTexture() {
+            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128; const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 512, 128); 
+            ctx.lineWidth = 6; ctx.strokeStyle = '#10ac84'; ctx.strokeRect(8, 8, 496, 112); 
+            ctx.lineWidth = 2; ctx.strokeStyle = '#ff4757'; ctx.strokeRect(14, 14, 484, 100); 
+            
+            ctx.font = "bold 32px 'Orbitron', sans-serif"; ctx.fillStyle = "#ff2116"; ctx.textAlign = "center"; ctx.fillText("PECEL LELE", 256, 48);
+            ctx.font = "bold 20px 'Poppins', sans-serif"; ctx.fillStyle = "#0a3d62"; ctx.fillText("Khas Lamongan - Sedia Ayam Goreng", 256, 76);
+            ctx.font = "italic 13px 'Poppins', sans-serif"; ctx.fillStyle = "#10ac84"; ctx.fillText("Sambal Setan Pedas Mampus!", 256, 102);
+            
+            ctx.fillStyle = "#ff9f43"; ctx.beginPath(); ctx.arc(60, 65, 16, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "#2f3640"; ctx.fillRect(410, 60, 45, 12); 
+            
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // FUNGSI MEMBUAT WARUNG PECEL LELE MODEL GEROBAK KAKI LIMA
+        function createGerobakPecelLele() {
+            const warungGroup = new THREE.Group();
+
+            // 1. Badan Gerobak (Kayu)
+            const boxGerobak = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1.4, 1.4), new THREE.MeshStandardMaterial({ color: 0xcd6133, roughness: 0.8 }));
+            boxGerobak.position.y = 1.0; boxGerobak.castShadow = true; warungGroup.add(boxGerobak);
+
+            // Roda Gerobak Kecil
+            const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.15, 12); wheelGeo.rotateZ(Math.PI/2);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x2f3640 });
+            const wl = new THREE.Mesh(wheelGeo, wheelMat); wl.position.set(-1.0, 0.3, 0); const wr = wl.clone(); wr.position.x = 1.0;
+            warungGroup.add(wl, wr);
+
+            // 2. Tenda Kain Atap Di Atas Gerobak (Kain Putih/Biru Penutup)
+            const tentFrame = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.2, 3.5), new THREE.MeshStandardMaterial({ color: 0x2980b9, roughness: 0.9, transparent: true, opacity: 0.4 }));
+            tentFrame.position.set(0, 1.6, 0.8);
+
+            // Atap Tenda Kain Kaki Lima
+            const roofGeo = new THREE.BoxGeometry(5.8, 0.1, 3.8);
+            const roof = new THREE.Mesh(roofGeo, new THREE.MeshStandardMaterial({ color: 0x2c3e50 })); roof.position.set(0, 3.2, 0.8); warungGroup.add(roof);
+
+            // Tiang Besi Penyangga Tenda Kaki Lima
+            const poleGeo = new THREE.CylinderGeometry(0.05, 0.05, 3.2); const poleMat = new THREE.MeshStandardMaterial({ color: 0xbdc3c7 });
+            const p1 = new THREE.Mesh(poleGeo, poleMat); p1.position.set(-2.7, 1.6, -1.0); const p2 = p1.clone(); p2.position.set(2.7, 1.6, -1.0);
+            const p3 = p1.clone(); p3.position.set(-2.7, 1.6, 2.5); const p4 = p1.clone(); p4.position.set(2.7, 1.6, 2.5);
+            warungGroup.add(p1, p2, p3, p4);
+
+            // 3. Spanduk Legendaris Pecel Lele Kain Di Depan Gerobak
+            const bannerGeo = new THREE.PlaneGeometry(5.2, 1.5);
+            const bannerMat = new THREE.MeshStandardMaterial({ map: createPecelLeleBannerTexture(), roughness: 0.7 });
+            const banner = new THREE.Mesh(bannerGeo, bannerMat); banner.position.set(0, 2.2, 2.52); warungGroup.add(banner);
+
+            // Lampu Bohlam Gantung dalam Gerobak Tenda (Menyala pas malam)
+            const bulbLight = new THREE.PointLight(0xffea00, 0, 12); bulbLight.position.set(0, 2.8, 0.8); warungGroup.add(bulbLight);
+            nightLightsArray.push({ light: bulbLight, maxIntensity: 3.5 });
+
+            // Efek Spanduk Kain Menyala Terang Waktu Malam
+            nightEmissiveMaterials.push({ mesh: banner, dayColor: 0xffffff, nightColor: 0xffffff, isEmissive: true });
+
+            return warungGroup;
+        }
+
+        // FUNGSI MEMBUAT TIANG LAMPU JALANAN
+        function createStreetLight() {
+            const lightGroup = new THREE.Group();
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 6.5), new THREE.MeshStandardMaterial({ color: 0x4b6584, roughness: 0.5 })); pole.position.y = 3.25; pole.castShadow = true; lightGroup.add(pole);
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.12), new THREE.MeshStandardMaterial({ color: 0x4b6584 })); arm.position.set(0.8, 6.5, 0); lightGroup.add(arm);
+            
+            const bulbMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+            const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.5), bulbMat); bulb.position.set(1.6, 6.4, 0); lightGroup.add(bulb);
+            nightEmissiveMaterials.push({ mesh: bulb, dayColor: 0x555555, nightColor: 0xffea00, isEmissive: true });
+
+            const pointL = new THREE.PointLight(0xff9f43, 0, 25, 0.8); pointL.position.set(1.6, 6.0, 0); pointL.castShadow = true; lightGroup.add(pointL);
+            nightLightsArray.push({ light: pointL, maxIntensity: 4.0 });
+
+            return lightGroup;
+        }
+
+        // RAMBU LALU LINTAS & MARKA
+        function createTrafficLightSign() {
+            const group = new THREE.Group();
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 5.0), new THREE.MeshStandardMaterial({ color: 0x2c3e50 })); pole.position.y = 2.5; group.add(pole);
+            const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.6, 0.6), new THREE.MeshStandardMaterial({ color: 0x1e272e })); box.position.set(0, 5.0, 0); group.add(box);
+            const redLight = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16), new THREE.MeshBasicMaterial({ color: 0xff4757 })); redLight.rotation.x = Math.PI/2; redLight.position.set(0, 5.4, 0.31);
+            const yellowLight = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16), new THREE.MeshBasicMaterial({ color: 0xffa502 })); yellowLight.rotation.x = Math.PI/2; yellowLight.position.set(0, 5.0, 0.31);
+            const greenLight = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16), new THREE.MeshBasicMaterial({ color: 0x2ed573 })); greenLight.rotation.x = Math.PI/2; greenLight.position.set(0, 4.6, 0.31);
+            group.add(redLight, yellowLight, greenLight); return group;
+        }
+        function createStopSign() {
+            const group = new THREE.Group();
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.2), new THREE.MeshStandardMaterial({ color: 0x3f3f3f })); pole.position.y = 2.1; group.add(pole);
+            const octGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.06, 8); octGeo.rotateX(Math.PI/2); octGeo.rotateY(Math.PI/8);
+            const plate = new THREE.Mesh(octGeo, new THREE.MeshStandardMaterial({ color: 0xc0392b })); plate.position.set(0, 4.2, 0); group.add(plate);
+            const innerLine = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.02), new THREE.MeshStandardMaterial({ color: 0xffffff })); innerLine.position.set(0, 4.2, 0.04); group.add(innerLine);
+            return group;
+        }
+        function createZebraCross(zPos) {
+            const zebraGroup = new THREE.Group(); const stripeGeo = new THREE.PlaneGeometry(1.2, 12); const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0 });
+            for(let x = -6; x <= 6; x += 2.4) {
+                const stripe = new THREE.Mesh(stripeGeo, stripeMat); stripe.rotation.x = -Math.PI/2; stripe.position.set(x, 0.03, zPos); stripe.receiveShadow = true; zebraGroup.add(stripe);
+            }
+            scene.add(zebraGroup);
+        }
+        function createTree() {
+            const treeGroup = new THREE.Group();
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 2.4), new THREE.MeshStandardMaterial({ color: 0x4a3728 })); trunk.position.y = 1.2; treeGroup.add(trunk);
+            const leaves = new THREE.Mesh(new THREE.SphereGeometry(1.4, 8, 8), new THREE.MeshStandardMaterial({ color: 0x26de81, roughness: 0.9, flatShading: true })); leaves.position.y = 2.8; treeGroup.add(leaves);
+            return treeGroup;
+        }
+
+        const buildingColors = [0x34495e, 0x2c3e50, 0x7f8c8d, 0x95a5a6, 0x16a085];
+        let totalAlfamart = 0; let totalIndomaret = 0; let signIndex = 0;
+
+        // PROSEDURAL GENERASI KOTA & SMARTPHONE MINIMARKET (MASING-MASING MAKSIMAL 2)
+        for (let z = -25; z > -trackLength + 80; z -= 30) {
+            const sideSign = (Math.random() > 0.5) ? 1 : -1;
+            const xPosBase = (trackWidth / 2 + 0.3) * sideSign;
+
+            // LAMPU JALANAN DI PINGGIR JALAN (Kiri dan Kanan Terpasang Rapi)
+            if (Math.abs(z) % 30 === 0) {
+                const sLightL = createStreetLight(); sLightL.position.set(-(trackWidth/2 + 0.4), 0, z); scene.add(sLightL);
+                const sLightR = createStreetLight(); sLightR.position.set((trackWidth/2 + 0.4), 0, z - 15); sLightR.rotation.y = Math.PI; scene.add(sLightR);
+            }
+
+            if (Math.abs(z) % 90 === 0) {
+                let currentSign = (signIndex % 2 === 0) ? createTrafficLightSign() : createStopSign();
+                if(signIndex % 2 === 0) createZebraCross(z);
+                currentSign.position.set(-(trackWidth/2 + 0.6), 0, z); scene.add(currentSign); signIndex++;
+            }
+            
+            const tree1 = createTree(); tree1.position.set(-(trackWidth/2 + 2.2), 0, z - 4); environmentGroup.add(tree1);
+            const tree2 = createTree(); tree2.position.set((trackWidth/2 + 2.2), 0, z + 4); environmentGroup.add(tree2);
+
+            const randType = Math.random();
+
+            // 1. WARUNG PECEL LELE GEROBAK (Banyak Muncul di Pinggir Jalan)
+            if (randType < 0.25) {
+                const leleGerobak = createGerobakPecelLele();
+                leleGerobak.position.set(xPosBase + (2.5 * sideSign), 0, z);
+                if(sideSign < 0) leleGerobak.rotation.y = Math.PI; // Hadapkan spanduk ke jalan raya
+                environmentGroup.add(leleGerobak);
+            } 
+            // 2. ALFAMART (DIBATASI MAKSIMAL 2 SAJA DI SELURUH GAME)
+            else if (randType >= 0.25 && randType < 0.40 && totalAlfamart < 2) {
+                const alfaGroup = new THREE.Group(); alfaGroup.position.set(xPosBase + (5 * sideSign), 0, z);
+                const store = new THREE.Mesh(new THREE.BoxGeometry(9, 4.8, 7.5), new THREE.MeshStandardMaterial({ color: 0xf5f6fa })); store.position.y = 2.4; alfaGroup.add(store);
+                const listMerah = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.9, 7.7), new THREE.MeshStandardMaterial({ color: 0xe84118 })); listMerah.position.y = 4.35; alfaGroup.add(listMerah);
+                const listKuning = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.15, 7.72), new THREE.MeshStandardMaterial({ color: 0xfbc531 })); listKuning.position.y = 3.82; alfaGroup.add(listKuning);
+                const pintuKaca = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 2.8), new THREE.MeshStandardMaterial({ color: 0x74b9ff })); pintuKaca.position.set(0, 1.4, -3.76 * sideSign); if(sideSign < 0) pintuKaca.rotation.y = Math.PI; alfaGroup.add(pintuKaca);
+                nightEmissiveMaterials.push({ mesh: pintuKaca, dayColor: 0x74b9ff, nightColor: 0xffffff, isEmissive: true });
+                environmentGroup.add(alfaGroup); totalAlfamart++;
+            } 
+            // 3. INDOMARET (DIBATASI MAKSIMAL 2 SAJA DI SELURUH GAME)
+            else if (randType >= 0.40 && randType < 0.55 && totalIndomaret < 2) {
+                const indoGroup = new THREE.Group(); indoGroup.position.set(xPosBase + (5 * sideSign), 0, z);
+                const store = new THREE.Mesh(new THREE.BoxGeometry(9, 4.8, 7.5), new THREE.MeshStandardMaterial({ color: 0xf5f6fa })); store.position.y = 2.4; indoGroup.add(store);
+                const listBiru = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.9, 7.7), new THREE.MeshStandardMaterial({ color: 0x00a8ff })); listBiru.position.y = 4.35; indoGroup.add(listBiru);
+                const pintuKaca = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 2.8), new THREE.MeshStandardMaterial({ color: 0x74b9ff })); pintuKaca.position.set(0, 1.4, -3.76 * sideSign); if(sideSign < 0) pintuKaca.rotation.y = Math.PI; indoGroup.add(pintuKaca);
+                nightEmissiveMaterials.push({ mesh: pintuKaca, dayColor: 0x74b9ff, nightColor: 0xffffff, isEmissive: true });
+                environmentGroup.add(indoGroup); totalIndomaret++;
+            } 
+            // 4. GEDUNG-GEDUNG TINGGI (TETAP ADA DI KANAN DAN KIRI JALAN AGAR MEGAH)
+            else {
+                const hL = 22 + Math.random() * 26; const wL = 12 + Math.random() * 4;
+                // Gedung Kiri
+                const bL = new THREE.Mesh(new THREE.BoxGeometry(wL, hL, 14), new THREE.MeshStandardMaterial({ color: buildingColors[Math.floor(Math.random() * buildingColors.length)] })); 
+                bL.position.set(-(trackWidth/2 + wL/2 + 3.5), hL/2, z); bL.castShadow = true; bL.receiveShadow = true; environmentGroup.add(bL);
+                
+                // Gedung Kanan
+                const bR = new THREE.Mesh(new THREE.BoxGeometry(wL, hL, 14), new THREE.MeshStandardMaterial({ color: buildingColors[Math.floor(Math.random() * buildingColors.length)] })); 
+                bR.position.set((trackWidth/2 + wL/2 + 3.5), hL/2, z - 5); bR.castShadow = true; bR.receiveShadow = true; environmentGroup.add(bR);
+
+                // Tambah Jendela Bercahaya pada Gedung Kiri & Kanan
+let rows = Math.floor(hL / 3.5);
+let cols = Math.floor(wL / 2.2);
+
+for(let r = 1; r < rows; r++) {
+
+    for(let c = 0; c < cols; c++) {
+
+        // JENDELA GEDUNG KIRI
+        const winL = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.2, 1.7),
+            new THREE.MeshStandardMaterial({ color: 0x74b9ff })
+        );
+
+        winL.position.set(
+            bL.position.x - wL/2 + 1.4 + (c * 2.1),
+            r * 3.5,
+            bL.position.z + 7.02
+        );
+
+        environmentGroup.add(winL);
+
+        nightEmissiveMaterials.push({
+            mesh: winL,
+            dayColor: 0x74b9ff,
+            nightColor: 0xfff200,
+            isEmissive: true
+        });
+
+        // JENDELA GEDUNG KANAN
+        const winR = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.2, 1.7),
+            new THREE.MeshStandardMaterial({ color: 0x74b9ff })
+        );
+
+        winR.position.set(
+            bR.position.x - wL/2 + 1.4 + (c * 2.1),
+            r * 3.5,
+            bR.position.z + 7.02
+        );
+
+        environmentGroup.add(winR);
+
+        nightEmissiveMaterials.push({
+            mesh: winR,
+            dayColor: 0x74b9ff,
+            nightColor: 0xfff200,
+            isEmissive: true
+        });
+
+    }
+}
+            }
+        }
+
+        // AWAN DAN BURUNG
+        const cloudsArray = []; const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0, flatShading: true });
+        for(let i = 0; i < 15; i++) {
+            const cloud = new THREE.Group(); const numBlobs = 3 + Math.floor(Math.random() * 3);
+            for(let b=0; b<numBlobs; b++) {
+                const blob = new THREE.Mesh(new THREE.SphereGeometry(3 + Math.random()*3, 6, 6), cloudMat); blob.position.set(b * 3, Math.random() * 2 - 1, Math.random() * 2 - 1); cloud.add(blob);
+            }
+            cloud.position.set((Math.random() - 0.5) * 200, 38 + Math.random() * 12, -Math.random() * trackLength); scene.add(cloud); cloudsArray.push(cloud);
+        }
+
+        const birdsArray = []; const birdMat = new THREE.MeshStandardMaterial({ color: 0x2f3640, roughness: 1.0, flatShading: true });
+        for(let i = 0; i < 12; i++) {
+            const bird = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.6), birdMat); bird.add(body);
+            const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 0.2), birdMat); wingL.position.set(-0.4, 0, 0); wingL.name = "wingL"; bird.add(wingL);
+            const wingR = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 0.2), birdMat); wingR.position.set(0.4, 0, 0); wingR.name = "wingR"; bird.add(wingR);
+            bird.position.set((Math.random() - 0.5) * 60, 20 + Math.random() * 8, -Math.random() * trackLength);
+            bird.userData = { speed: 0.2 + Math.random()*0.2, wingSpeed: 0.11 + Math.random()*0.14, time: Math.random()*100 };
+            scene.add(bird); birdsArray.push(bird);
+        }
+
+        // PESAWAT TERBANG MELINTAS 1 KALI SETIAP GAME MULAI
+        const airplaneGroup = new THREE.Group();
+        function buildAirplane() {
+            while(airplaneGroup.children.length > 0) airplaneGroup.remove(airplaneGroup.children[0]);
+            
+            const mainBody = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 9, 16), new THREE.MeshStandardMaterial({ color: 0xffffff })); mainBody.rotation.x = Math.PI/2; airplaneGroup.add(mainBody);
+            const nose = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), new THREE.MeshStandardMaterial({ color: 0x3498db })); nose.position.set(0, 0, -4.5); airplaneGroup.add(nose);
+            const wing = new THREE.Mesh(new THREE.BoxGeometry(11, 0.12, 2.2), new THREE.MeshStandardMaterial({ color: 0xffffff })); wing.position.set(0, -0.1, -0.4); airplaneGroup.add(wing);
+            const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.4, 1.8), new THREE.MeshStandardMaterial({ color: 0xe74c3c })); tailFin.position.set(0, 1.2, 3.8); airplaneGroup.add(tailFin);
+            
+            const stroboL = new THREE.PointLight(0xff0000, 0, 10); stroboL.position.set(-5.5, 0, -0.4); airplaneGroup.add(stroboL);
+            const stroboR = new THREE.PointLight(0x00ff00, 0, 10); stroboR.position.set(5.5, 0, -0.4); airplaneGroup.add(stroboR);
+            airplaneGroup.userData = { stroboL, stroboR, active: true };
+            
+            airplaneGroup.position.set(-35, 52, 50); 
+            scene.add(airplaneGroup);
+        }
+
+        // MENARA SIGER FINISH GATE
+        const sigerGroup = new THREE.Group(); sigerGroup.position.set(0, 0, -trackLength + 20);
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, metalness: 0.6, roughness: 0.15 });
+        const redSigerMat = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.4 });
+        const pillarL = new THREE.Mesh(new THREE.BoxGeometry(4, 26, 4), goldMat); pillarL.position.set(-15, 13, 0); pillarL.castShadow = true;
+        const pillarR = new THREE.Mesh(new THREE.BoxGeometry(4, 26, 4), goldMat); pillarR.position.set(15, 13, 0); pillarR.castShadow = true;
+        const beamTop = new THREE.Mesh(new THREE.BoxGeometry(34, 3.5, 4), goldMat); beamTop.position.set(0, 24.5, 0); beamTop.castShadow = true;
+        sigerGroup.add(pillarL, pillarR, beamTop);
+        const mahkotaGroup = new THREE.Group(); mahkotaGroup.position.set(0, 26, 0);
+        const centerCone = new THREE.Mesh(new THREE.ConeGeometry(5, 11, 4), redSigerMat); centerCone.position.set(0, 5.5, 0); centerCone.rotation.y = Math.PI/4; mahkotaGroup.add(centerCone);
+        nightEmissiveMaterials.push({
+    mesh: centerCone,
+    dayColor: 0xc0392b,
+    nightColor: 0xffd700,
+    isEmissive: true
+});
+        const offsets = [-4.0, -8.0, -11.8, -15.0];
+        offsets.forEach((offsetX, idx) => {
+            const h = 9 - (idx * 1.6); const r = 3.2 - (idx * 0.45);
+            const coneL = new THREE.Mesh(new THREE.ConeGeometry(r, h, 4), goldMat); coneL.position.set(offsetX, h/2, 0); coneL.rotation.y = Math.PI/4;
+            const coneR = new THREE.Mesh(new THREE.ConeGeometry(r, h, 4), goldMat); coneR.position.set(-offsetX, h/2, 0); coneR.rotation.y = Math.PI/4;
+            mahkotaGroup.add(coneL, coneR);
+            nightEmissiveMaterials.push({
+    mesh: coneL,
+    dayColor: 0xf1c40f,
+    nightColor: 0xfff200,
+    isEmissive: true
+});
+
+nightEmissiveMaterials.push({
+    mesh: coneR,
+    dayColor: 0xf1c40f,
+    nightColor: 0xfff200,
+    isEmissive: true
+});
+        });
+        sigerGroup.add(mahkotaGroup); scene.add(sigerGroup);
+
+        const barrierGroup = new THREE.Group(); const segmentLength = 10; const barrierGeo = new THREE.BoxGeometry(0.4, 0.9, segmentLength); const barrierMat = new THREE.MeshStandardMaterial({ color: 0xbdc3c7, roughness: 0.6 });
+        for (let z = -segmentLength/2; z > -trackLength; z -= segmentLength) {
+            const bL = new THREE.Mesh(barrierGeo, barrierMat); bL.position.set(-(trackWidth/2 + 0.15), 0.45, z); bL.castShadow = true; bL.receiveShadow = true;
+            const bR = bL.clone(); bR.position.x = (trackWidth/2 + 0.15); barrierGroup.add(bL, bR);
+        }
+        scene.add(barrierGroup);
+
+        // LAMPU JALAN
+for(let z = -30; z > -trackLength; z -= 40){
+
+    const poleL = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15,0.15,8),
+        new THREE.MeshStandardMaterial({color:0x555555})
+    );
+
+    poleL.position.set(
+        -(trackWidth/2 + 4),
+        4,
+        z
+    );
+
+    scene.add(poleL);
+
+    const lampHeadL = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 16, 16),
+    new THREE.MeshStandardMaterial({
+        color: 0xffffcc,
+        emissive: 0x000000
+    })
+);
+
+lampHeadL.position.set(
+    -(trackWidth/2 + 4),
+    8,
+    z
+);
+
+scene.add(lampHeadL);
+
+nightEmissiveMaterials.push({
+    mesh: lampHeadL,
+    dayColor: 0xffffcc,
+    nightColor: 0xffffff,
+    isEmissive: true
+});
+
+    const lampL = new THREE.PointLight(
+    0xfff2a8,
+    0,
+    50
+);
+
+lampL.position.set(
+    -(trackWidth/2 + 4),
+    8,
+    z
+);
+
+scene.add(lampL);
+
+nightLightsArray.push({
+    light: lampL,
+    maxIntensity: 100
+});
+
+    const poleR = poleL.clone();
+    poleR.position.x = (trackWidth/2 + 4);
+    scene.add(poleR);
+    const lampHeadR = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 16, 16),
+    new THREE.MeshStandardMaterial({
+    color: 0xffffcc,
+    emissive: 0xffffcc,
+    emissiveIntensity: 2
+})
+);
+
+lampHeadR.position.set(
+    (trackWidth/2 + 4),
+    8,
+    z
+);
+
+scene.add(lampHeadR);
+
+nightEmissiveMaterials.push({
+    mesh: lampHeadR,
+    dayColor: 0xffffcc,
+    nightColor: 0xffffff,
+    isEmissive: true
+});
+
+
+    const lampR = new THREE.PointLight(
+    0xfff2a8,
+    0,
+    50
+);
+
+lampR.position.set(
+    (trackWidth/2 + 4),
+    8,
+    z
+);
+
+scene.add(lampR);
+
+nightLightsArray.push({
+    light: lampR,
+    maxIntensity: 100
+});
+
+}
+
+// ZEBRA CROSS
+for(let i = 0; i < 7; i++){
+
+    const zebra = new THREE.Mesh(
+        new THREE.BoxGeometry(
+            1.5,   // lebar garis
+            0.05,
+            8      // panjang garis ke depan
+        ),
+        new THREE.MeshStandardMaterial({
+            color: 0xffffff
+        })
+    );
+
+    zebra.position.set(
+        -6 + (i * 2),  // susun ke samping
+        0.03,
+        -220          // sejajar lampu merah
+    );
+
+    zebra.receiveShadow = true;
+
+    scene.add(zebra);
+}
+
+// TIANG LAMPU LALU LINTAS
+const trafficPole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.35, 0.35, 18),
+    new THREE.MeshStandardMaterial({
+        color: 0x444444
+    })
+);
+
+trafficPole.position.set(
+    9,
+    9,
+    -220
+);
+
+scene.add(trafficPole);
+
+const trafficBox = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 2, 1.2),
+    new THREE.MeshStandardMaterial({
+        color: 0x222222
+    })
+);
+
+trafficBox.position.set(
+    6,
+    15,
+    -220
+);
+
+scene.add(trafficBox);
+
+const trafficArm = new THREE.Mesh(
+    new THREE.BoxGeometry(6, 0.3, 0.3),
+    new THREE.MeshStandardMaterial({
+        color: 0x222222
+    })
+);
+
+trafficArm.position.set(
+    7.5,
+    15,
+    -220
+);
+
+scene.add(trafficArm);
+
+const redLight = new THREE.Mesh(
+    new THREE.SphereGeometry(0.45, 20, 20),
+    new THREE.MeshStandardMaterial({
+        color: 0xff0000
+    })
+);
+
+redLight.position.set(
+    4,
+    15,
+    -219.3
+);
+
+scene.add(redLight);
+nightEmissiveMaterials.push({
+    mesh: redLight,
+    dayColor: 0xff0000,
+    nightColor: 0xff0000,
+    isEmissive: true
+});
+
+
+const yellowLight = new THREE.Mesh(
+    new THREE.SphereGeometry(0.45, 20, 20),
+    new THREE.MeshStandardMaterial({
+        color: 0xffff00
+    })
+);
+
+yellowLight.position.set(
+    6,
+    15,
+    -219.3
+);
+
+scene.add(yellowLight);
+
+nightEmissiveMaterials.push({
+    mesh: yellowLight,
+    dayColor: 0xffff00,
+    nightColor: 0xffff00,
+    isEmissive: true
+});
+
+const greenLight = new THREE.Mesh(
+    new THREE.SphereGeometry(0.45, 20, 20),
+    new THREE.MeshStandardMaterial({
+        color: 0x00ff00
+    })
+);
+
+greenLight.position.set(
+    8,
+    15,
+    -219.3
+);
+
+scene.add(greenLight);
+
+nightEmissiveMaterials.push({
+    mesh: greenLight,
+    dayColor: 0x00ff00,
+    nightColor: 0x00ff00,
+    isEmissive: true
+});
+
+        // KOIN DAN OBSTACLE
+        const coinGroup = new THREE.Group(); scene.add(coinGroup);
+        const obstacleGroup = new THREE.Group(); scene.add(obstacleGroup);
+
+        const coinGeo = new THREE.CylinderGeometry(0.7, 0.7, 0.18, 24); const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 1.0, roughness: 0.05, emissive: 0xffaa00, emissiveIntensity: 0.35 });
+        const obstacleGeo = new THREE.DodecahedronGeometry(0.6); const obstacleMat = new THREE.MeshStandardMaterial({ color: 0x7f8c8d, roughness: 0.9 });
+
+        function createDollarSignGroup() {
+            const dg = new THREE.Group(); const dMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, metalness: 0.9, roughness: 0.1 });
+            const line = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), dMat); line.position.z = 0.1; dg.add(line);
+            const bT = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.08), dMat); bT.position.set(0, 0.35, 0.1); const bM = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.08), dMat); bM.position.set(0, 0, 0.1); const bB = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.08), dMat); bB.position.set(0, -0.35, 0.1);
+            const sL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.08), dMat); sL.position.set(-0.16, 0.18, 0.1); const sR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.08), dMat); sR.position.set(0.16, -0.18, 0.1);
+            dg.add(bT, bM, bB, sL, sR); return dg;
+        }
+
+        function generateRandomizedItems() {
+            while(coinGroup.children.length > 0) { coinGroup.remove(coinGroup.children[0]); }
+            while(obstacleGroup.children.length > 0) { obstacleGroup.remove(obstacleGroup.children[0]); }
+
+            for(let z = -60; z > -trackLength + 50; z -= 45) {
+                const cMesh = new THREE.Mesh(coinGeo, coinMat); cMesh.rotation.x = Math.PI / 2; cMesh.castShadow = true;
+                const singleC = new THREE.Group(); singleC.add(cMesh); const df = createDollarSignGroup(); const db = createDollarSignGroup(); db.rotation.y = Math.PI; singleC.add(df, db);
+                singleC.position.set((Math.random() - 0.5) * (trackWidth - 4), 1.2, z + (Math.random() * 15 - 7.5)); 
+                coinGroup.add(singleC);
+            }
+
+            const totalObstacles = 8;
+            for (let i = 0; i < totalObstacles; i++) {
+                const stone = new THREE.Mesh(obstacleGeo, obstacleMat); const isLarge = Math.random() > 0.5; const scale = isLarge ? (1.6 + Math.random() * 0.4) : (0.7 + Math.random() * 0.3);
+                stone.scale.set(scale, scale * (0.7 + Math.random() * 0.3), scale); stone.position.y = scale * 0.45; stone.userData = { hitRadius: scale * 0.95 };
+                const segment = (trackLength - 200) / totalObstacles; const zPos = -100 - (i * segment) - (Math.random() * 30);
+                stone.position.set((Math.random() - 0.5) * (trackWidth - 5), stone.position.y, zPos); stone.castShadow = true; stone.receiveShadow = true; 
+                obstacleGroup.add(stone);
+            }
+        }
+
+        // MODEL TRUK LAMPUNG
+        const carGroup = new THREE.Group(); scene.add(carGroup);
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.4, 6.2), new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.8 })); chassis.position.y = 0.45; chassis.castShadow = true; carGroup.add(chassis);
+        const truckCabin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.6, 1.8), new THREE.MeshStandardMaterial({ color: 0xd35400, metalness: 0.5, roughness: 0.2 })); truckCabin.position.set(0, 1.45, -2.1); truckCabin.castShadow = true; carGroup.add(truckCabin);
+        const windshield = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 0.7), new THREE.MeshStandardMaterial({ color: 0x1e272e })); windshield.position.set(0, 1.65, -3.01); windshield.rotation.y = Math.PI; carGroup.add(windshield);
+        const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.5, 0.3), new THREE.MeshStandardMaterial({ color: 0x2f3640 })); bumper.position.set(0, 0.55, -3.05); bumper.castShadow = true; carGroup.add(bumper);
+
+        const headlightGeo = new THREE.BoxGeometry(0.35, 0.2, 0.1); const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff200 });
+        const headlightL = new THREE.Mesh(headlightGeo, headlightMat); headlightL.position.set(-1.0, 0.65, -3.16);
+        const headlightR = new THREE.Mesh(headlightGeo, headlightMat); headlightR.position.set(1.0, 0.65, -3.16);
+        carGroup.add(headlightL, headlightR);
+        nightEmissiveMaterials.push({ mesh: headlightL, dayColor: 0xfff200, nightColor: 0xffffff, isEmissive: true });
+        nightEmissiveMaterials.push({ mesh: headlightR, dayColor: 0xfff200, nightColor: 0xffffff, isEmissive: true });
+
+        // SPOTLIGHT SOROTAN TRUK
+        const truckSpotlightL = new THREE.SpotLight(0xfffae0, 0, 45, Math.PI / 5, 0.5, 0.8); truckSpotlightL.position.set(-1.0, 0.65, -3.2);
+        const truckSpotlightR = new THREE.SpotLight(0xfffae0, 0, 45, Math.PI / 5, 0.5, 0.8); truckSpotlightR.position.set(1.0, 0.65, -3.2);
+        const targetL = new THREE.Object3D(); targetL.position.set(-1.0, 0.2, -25); carGroup.add(targetL); truckSpotlightL.target = targetL;
+        const targetR = new THREE.Object3D(); targetR.position.set(1.0, 0.2, -25); carGroup.add(targetR); truckSpotlightR.target = targetR;
+        carGroup.add(truckSpotlightL, truckSpotlightR);
+
+        const bedFloor = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.15, 4.2), new THREE.MeshStandardMaterial({ color: 0x7f8c8d })); bedFloor.position.set(0, 0.65, 0.9); bedFloor.castShadow = true; carGroup.add(bedFloor);
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xe67e22 }); 
+        const wallL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 4.2), wallMat); wallL.position.set(-1.24, 1.2, 0.9); wallL.castShadow = true;
+        const wallR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 4.2), wallMat); wallR.position.set(1.24, 1.2, 0.9); wallR.castShadow = true;
+        const wallB = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.1, 0.12), wallMat); wallB.position.set(0, 1.2, 2.94); wallB.castShadow = true;
+        carGroup.add(wallL, wallR, wallB);
+
+        const wheels = [];
+        const wPositions = [[-1.4, 0.5, -2.0], [1.4, 0.5, -2.0], [-1.4, 0.5, 0.2], [1.4, 0.5, 0.2], [-1.4, 0.5, 2.0], [1.4, 0.5, 2.0]];
+        wPositions.forEach(pos => {
+            const w = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.45, 24), new THREE.MeshStandardMaterial({ color: 0x2f3640, roughness: 0.9 }));
+            w.position.set(...pos); w.rotation.z = Math.PI/2; w.castShadow = true; carGroup.add(w); wheels.push(w);
+        });
+        carGroup.position.set(0, 0, -50);
+
+        // EVENT KLIK DETEKSI
+        let isNightMode = false;
+        const raycaster = new THREE.Raycaster(); const mouseVector = new THREE.Vector2();
+
+        window.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('.game-ui-panel')) return;
+            mouseVector.x = (e.clientX / window.innerWidth) * 2 - 1; mouseVector.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouseVector, camera);
+            
+            if (raycaster.intersectObject(sunVisual).length > 0) { toggleNightMode(); return; }
+            if (raycaster.intersectObjects(carGroup.children, true).length > 0) playHornSound();
+        });
+
+        // BINTANG KECIL KERLAP-KERLIP
+const stars = [];
+
+for(let i = 0; i < 250; i++){
+
+    const star = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+            color: 0xffffff
+        })
+    );
+
+    star.position.set(
+        (Math.random() - 0.5) * 300,
+        25 + Math.random() * 50,
+        -20 - Math.random() * 300
+    );
+
+    const size = 0.3 + Math.random() * 0.4;
+
+    star.scale.set(size, size, size);
+
+    star.visible = false;
+
+    scene.add(star);
+
+    stars.push(star);
+}
+
+        // SWITCH SIANG & MALAM
+        function toggleNightMode() {
+            isNightMode = !isNightMode;
+            const statusEl = document.getElementById('mode-status');
+            
+            if(isNightMode) {
+                statusEl.innerText = "🌙 MODE: MALAM (Klik Sun)"; statusEl.style.color = "#fbc531";
+                scene.background = nightColor; scene.fog.color = nightColor;
+                ambientLight.color.setHex(0x222233); ambientLight.intensity = 0.25; sunLight.intensity = 0.05;
+                truckSpotlightL.intensity = 20; truckSpotlightR.intensity = 20;
+                stars.forEach(star => {
+    star.visible = true;
+});
+
+                nightLightsArray.forEach(item => item.light.intensity = item.maxIntensity);
+                nightEmissiveMaterials.forEach(item => {
+                    item.mesh.material.color.setHex(item.nightColor);
+                    if(item.isEmissive) { item.mesh.material.emissive.setHex(item.nightColor); item.mesh.material.emissiveIntensity = 8; }
+                });
+            } else {
+                statusEl.innerText = "☀️ MODE: SIANG (Klik Sun)"; statusEl.style.color = "#57ecf8";
+                scene.background = dayColor; scene.fog.color = dayColor;
+                ambientLight.color.setHex(0xffffff); ambientLight.intensity = 0.85; sunLight.intensity = 1.4;
+                truckSpotlightL.intensity = 0; truckSpotlightR.intensity = 0;
+                stars.forEach(star => {
+    star.visible = false;
+});
+
+                nightLightsArray.forEach(item => item.light.intensity = 0);
+                nightEmissiveMaterials.forEach(item => {
+                    item.mesh.material.color.setHex(item.dayColor);
+                    if(item.isEmissive) { item.mesh.material.emissive.setHex(0x000000); item.mesh.material.emissiveIntensity = 0; }
+                });
+            }
+        }
+
+        // STATE GAMEPLAY
+        let gameActive = true; let lives = 3; let currentSpeed = 0; let coinsCollected = 0;
+        let maxSpeed = 1.8; let acceleration = 0.026; let braking = 0.045;
+        let yawCameraAngle = 0; let pitchCameraAngle = 0; let isInteracting = false; let prevInteractionX = 0; let prevInteractionY = 0;
+        const keys = { w:0, s:0, a:0, d:0, ArrowUp:0, ArrowDown:0, ArrowLeft:0, ArrowRight:0 };
+
+        window.addEventListener('keydown', (e) => { if(e.key in keys) keys[e.key] = 1; });
+        window.addEventListener('keyup', (e) => { if(e.key in keys) keys[e.key] = 0; });
+        window.addEventListener('mousedown', (e) => { isInteracting = true; prevInteractionX = e.clientX; prevInteractionY = e.clientY; });
+        window.addEventListener('mousemove', (e) => {
+            if (!isInteracting) return;
+            yawCameraAngle -= (e.clientX - prevInteractionX) * 0.005;
+            pitchCameraAngle = Math.max(-0.4, Math.min(0.3, pitchCameraAngle - (e.clientY - prevInteractionY) * 0.005));
+            prevInteractionX = e.clientX; prevInteractionY = e.clientY;
+        });
+        window.addEventListener('mouseup', () => isInteracting = false);
+
+        function updateLivesDisplay() { document.getElementById('lives-display').innerHTML = '❤️ '.repeat(lives) || '❌'; }
+        function updateCoinDisplay() { document.getElementById('coin-display').innerText = `🪙 Koin: ${coinsCollected}`; }
+
+        // MAIN INITIAL TRIGGER
+        buildAirplane();
+        generateRandomizedItems();
+
+        // RUNLOOP CORE ANIMASI
+        let sunTime = 0; let loopTick = 0;
+        function frame() {
+            requestAnimationFrame(frame);
+            coinGroup.children.forEach(c => c.rotation.y += 0.03);
+            loopTick++;
+
+            sunTime += 0.002;
+            sunGroup.position.x = -180 + (Math.sin(sunTime * 0.5 + 0.5) * 360);
+            sunGroup.position.y = 75 + Math.abs(Math.sin(sunTime)) * 40;
+
+            // PESAWAT TERBANG MELINTAS
+            if(airplaneGroup.userData.active) {
+                airplaneGroup.position.z -= 1.8; 
+                airplaneGroup.position.x += 0.12; 
+                
+                if(isNightMode && loopTick % 20 === 0) {
+                    const toggleStrobo = airplaneGroup.userData.stroboL.intensity === 0 ? 8 : 0;
+                    airplaneGroup.userData.stroboL.intensity = toggleStrobo;
+                    airplaneGroup.userData.stroboR.intensity = toggleStrobo;
+                } else if (!isNightMode) {
+                    airplaneGroup.userData.stroboL.intensity = 0;
+                    airplaneGroup.userData.stroboR.intensity = 0;
+                }
+
+                if(airplaneGroup.position.z < -trackLength - 100) {
+                    airplaneGroup.userData.active = false;
+                    scene.remove(airplaneGroup);
+                }
+            }
+
+            cloudsArray.forEach(cloud => {
+                cloud.position.x += 0.04; if(cloud.position.x > 120) cloud.position.x = -120;
+            });
+
+            birdsArray.forEach(bird => {
+                bird.userData.time += bird.userData.wingSpeed; bird.position.z += bird.userData.speed;
+                if(bird.position.z > 50) bird.position.z = -trackLength;
+                const wL = bird.getObjectByName("wingL"); const wR = bird.getObjectByName("wingR");
+                if(wL && wR) { wL.rotation.z = Math.sin(bird.userData.time) * 0.6; wR.rotation.z = -Math.sin(bird.userData.time) * 0.6; }
+            });
+
+            if (gameActive) {
+                if (keys.w || keys.ArrowUp) { if (currentSpeed < maxSpeed) currentSpeed += acceleration; }
+                else if (keys.s || keys.ArrowDown) { if (currentSpeed > -maxSpeed/2) currentSpeed -= braking; }
+                else { currentSpeed *= 0.992; if (Math.abs(currentSpeed) < 0.01) currentSpeed = 0; }
+                
+                carGroup.position.z -= currentSpeed;
+                if (Math.abs(currentSpeed) > 0.05) {
+                    const steer = currentSpeed > 0 ? 0.18 : -0.18;
+                    if (keys.a || keys.ArrowLeft) carGroup.position.x -= steer;
+                    if (keys.d || keys.ArrowRight) carGroup.position.x += steer;
+                }
+                const boundX = trackWidth/2 - 1.5; carGroup.position.x = Math.max(-boundX, Math.min(boundX, carGroup.position.x));
+                wheels.forEach(w => w.rotation.x += currentSpeed * 0.72);
+
+                coinGroup.children.forEach(singleC => {
+                    if (singleC.visible) {
+                        if (Math.abs(singleC.position.z - carGroup.position.z) < 3.5 && Math.abs(singleC.position.x - carGroup.position.x) < 1.8) { 
+                            singleC.visible = false; coinsCollected++; updateCoinDisplay(); playCoinSound(); 
+                        }
+                    }
+                });
+
+                obstacleGroup.children.forEach(stone => {
+                    if (stone.visible) {
+                        const distZ = Math.abs(stone.position.z - carGroup.position.z);
+                        const distX = Math.abs(stone.position.x - carGroup.position.x);
+                        if (distZ < (2.9 + stone.userData.hitRadius * 0.5) && distX < (1.5 + stone.userData.hitRadius * 0.5)) {
+                            stone.visible = false; lives--; updateLivesDisplay();
+                            if (lives <= 0) { endGame(false); } else { playHitSound(); currentSpeed = -0.25; }
+                        }
+                    }
+                });
+
+                if(carGroup.position.z <= -trackLength + 38) endGame(true);
+            }
+            
+            const camDist = 11.0; 
+            camera.position.set(carGroup.position.x + Math.sin(yawCameraAngle) * camDist, carGroup.position.y + 3.8 + Math.sin(pitchCameraAngle) * camDist, carGroup.position.z + Math.cos(yawCameraAngle) * camDist);
+            camera.lookAt(carGroup.position.x, carGroup.position.y + 1.2, carGroup.position.z - 4);
+
+            // EFEK BINTANG KERLAP-KERLIP
+if(isNightMode){
+
+    stars.forEach((star,index)=>{
+
+        const glow =
+            0.2 +
+            Math.abs(
+                Math.sin(
+                    Date.now() * 0.005 +
+                    index
+                )
+            ) * 0.8;
+
+        star.material.opacity = glow;
+
+        const size =
+            0.15 +
+            glow * 0.25;
+
+        star.scale.set(
+            size,
+            size,
+            size
+        );
+
+    });
+
+}
+
+            renderer.render(scene, camera);
+        }
+
+        function endGame(isWin) {
+            gameActive = false; const titleEl = document.getElementById('status-title'); document.getElementById('game-result-screen').style.display = 'flex';
+            if (isWin) { titleEl.innerText = `YOU WIN! (${coinsCollected} 🪙)`; titleEl.className = "win-text"; playWinSound(); } 
+            else { titleEl.innerText = "GAME OVER"; titleEl.className = "game-over-text"; playGameOverSound(); }
+        }
+
+        function resetSimulator() {
+            currentSpeed = 0; gameActive = true; lives = 3; coinsCollected = 0;
+            updateLivesDisplay(); updateCoinDisplay();
+            document.getElementById('game-result-screen').style.display = 'none';
+            carGroup.position.set(0, 0, -50);
+            generateRandomizedItems();
+            buildAirplane(); 
+            if(isNightMode) toggleNightMode();
+        }
+        
+        document.getElementById('btn-reset').addEventListener('click', resetSimulator);
+        document.getElementById('btn-replay').addEventListener('click', resetSimulator);
+        frame();
+    </script>
+</body>
+</html>
