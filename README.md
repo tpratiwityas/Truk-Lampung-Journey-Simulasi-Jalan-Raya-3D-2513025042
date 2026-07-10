@@ -1,5 +1,8 @@
 # 🚚 3D Lampung Truck Race – Pecel Lele Gerobak Edition
 
+## 🎮 Mainkan Game
+https://tpratiwityas.github.io/Truk-Lampung-Journey-Simulasi-Jalan-Raya-3D-2513025042/
+
 Proyek Mandiri Mata Kuliah Grafika Komputer
 
 ## Deskripsi
